@@ -1,0 +1,26 @@
+# ------------------------------------------------------------------------------
+# Look in defaults/main.yml for default values
+# ------------------------------------------------------------------------------
+# Url to iso image to be installed
+# arch_rpi_iso_url: ""
+# If set removes the temporary mount points and downloaded files
+# clean_up: ""
+# If set the target device will be zeroed out by dd
+# zero_out_sd_card: ""
+
+# ------------------------------------------------------------------------------
+# User defined variables
+# ------------------------------------------------------------------------------
+# Path to target device. Must be set by the user
+sd_card_device_path: ""
+# Size of the `bs` argument used by dd. When left blank the system values will be
+# taken from /sys/block/<dev_name>/size. Only used if zero_out_sd_card is set
+# to true
+sd_card_sector_size: ""
+# Size of the `count` argument used by dd. When left blank the system values
+# will be taken from /sys/block/<dev_name>/queue/physical_block_size.
+# Only used if zero_out_sd_card is set to true
+sd_card_sector_count: ""
+# Location of iso file. When left blank the system will download latest image
+# and set its location to this variable
+arch_iso_file: ""

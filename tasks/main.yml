@@ -1,0 +1,144 @@
+- name: Download latest ISO
+  block:
+    - name: Create local temp directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0700
+      with_items:
+        - "{{ ansible_env.HOME }}/.ansible"
+        - "{{ ansible_env.HOME }}/.ansible/tmp"
+    - name: Download latest iso
+      get_url:
+        url: "{{ arch_rpi_iso_url }}"
+        dest: "{{ ansible_env.HOME }}/.ansible/tmp/arch_iso.tar.gz"
+    - name: Register iso file path
+      set_fact:
+        arch_iso_file: "{{ ansible_env.HOME }}/.ansible/tmp/arch_iso.tar.gz"
+  when: arch_iso_file | length <= 0
+
+# This will take a while with default options
+- name: Zero-Out Card
+  block:
+    - name: Get stat information
+      stat:
+        path: "{{ sd_card_device_path }}"
+      register: sd_card_device_stat
+    - name: Check if device exists and is device
+      fail:
+        msg: "Path {{ sd_card_device_path }} not found or is not a device"
+      when: sd_card_device_stat.stat.exists == false or sd_card_device_stat.stat.isblk == false
+    - name: Get device name
+      set_fact:
+        sd_card_device_name: "{{ sd_card_device_path | basename }}"
+    - name: Get sector size if not provided
+      set_fact:
+        sd_card_sector_size: "{{lookup('file', '/sys/block/' + sd_card_device_name + '/queue/physical_block_size')}}"
+      when: sd_card_sector_size | length <= 0
+    - name: Get sectro count if not provided
+      set_fact:
+        sd_card_sector_count: "{{lookup('file', '/sys/block/' + sd_card_device_name + '/size')}}"
+      when: sd_card_sector_count | length <= 0
+    - name: Write zeros to device
+      command: "dd if=/dev/zero of={{ sd_card_device_path }} bs={{ sd_card_sector_size }} count={{ sd_card_sector_count }}"
+      changed_when: false
+      become: true
+  when: zero_out_sd_card == true
+
+- name: Get partition details
+  stat:
+    path: "{{ sd_card_device_path }}p1"
+  register: sd_card_partition_stat
+
+- name: Check if parition exists
+  set_fact:
+    sd_card_partition: true
+  when: sd_card_partition_stat.stat.exists == false
+
+- name: Format SD Card
+  command: |
+    parted --script "{{ sd_card_device_path }}" \
+    mklabel msdos \
+    mkpart primary fat32 1MiB 512MiB \
+    mkpart primary ext4 513MiB 100%
+  args:
+    creates: "{{ sd_card_device_path }}p1"
+  become: true
+  when: sd_card_partition is defined and sd_card_partition == true
+
+- name: Unmount partition if already existed
+  mount:
+    path: "{{ item.path }}"
+    src: "{{ sd_card_device_path }}{{ item.partition}}"
+    state: absent
+    fstype: "{{ item.fstype }}"
+  with_items:
+    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root", partition: "p2", fstype: ext4 }
+    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot", partition: "p1", fstype: vfat }
+  when: sd_card_partition is not defined
+  become: true
+
+# This will always trigger as we want to write to fresh file system
+- name: Create File System
+  shell: |
+    mkfs."{{ item.type }}" "{{ sd_card_device_path }}""{{ item.name }}"
+  with_items:
+    - { name: 'p1', type: vfat }
+    - { name: 'p2', type: ext4 }
+  become: true
+
+- name: Mount SD Card
+  block:
+    - name: Create local mount points
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0700
+      with_items:
+        - "{{ ansible_env.HOME }}/.ansible"
+        - "{{ ansible_env.HOME }}/.ansible/tmp"
+        - "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount"
+        - "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root"
+        - "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot"
+    - name: Mount partitions
+      mount:
+        path: "{{ item.path }}"
+        src: "{{ sd_card_device_path }}{{ item.partition}}"
+        state: mounted
+        fstype: "{{ item.fstype }}"
+      with_items:
+        - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root", partition: "p2", fstype: ext4 }
+        - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot", partition: "p1", fstype: vfat }
+      become: true
+
+- name: Copy ISO
+  block:
+    - name: Copy root partition
+      shell: |
+        bsdtar -xpf "{{ arch_iso_file }}" -C "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root"
+        sync
+    - name: Copy boot partition
+      shell: |
+        mv "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/boot/*" "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot/"
+        sync
+  become: true
+
+- name: Unmount sd card
+  mount:
+    path: "{{ item.path }}"
+    src: "{{ sd_card_device_path }}{{ item.partition}}"
+    state: absent
+    fstype: "{{ item.fstype }}"
+  with_items:
+    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root", partition: "p2", fstype: ext4 }
+    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot", partition: "p1", fstype: vfat }
+  become: true
+
+- name: Remove temp files
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "{{ arch_iso_file }}"
+    - "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount"
+  when: clean_up == true
