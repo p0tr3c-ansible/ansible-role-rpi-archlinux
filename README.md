@@ -11,7 +11,7 @@ All role variables are listed in vars/main.yml.
 
 ## Dependencies
 
-None
+Depends on bsdtar, and parted being installed on the host
 
 ## Example Playbook
 
