@@ -9,6 +9,9 @@
 # zero_out_sd_card: ""
 # If set the preconfigure.yml tasks will be run
 # preconfigure_os: ""
+# The base output directory used by playbook to store generated key pair. The
+# date based postifx will be created.
+# output_directory: ""
 
 # ------------------------------------------------------------------------------
 # User defined variables
@@ -34,5 +37,5 @@ static_ip_address: ""
 static_igw_address: ""
 static_dns_address: ""
 static_ip_config: ""
+# Path to public key to upload to the sd card.
 pub_key_file_path: ""
-# output_directory: ""
