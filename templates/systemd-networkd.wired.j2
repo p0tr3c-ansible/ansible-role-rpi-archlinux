@@ -1,0 +1,10 @@
+# BEGIN ANSIBLE MANAGED BLOCK
+[Match]
+Name=eth0
+
+[Network]
+Address={{ static_ip_address }}
+Gateway={{ static_igw_address }}
+DNS={{ static_dns_address }}
+DNS=8.8.8.8
+# END ANSIBLE MANAGED BLOCK

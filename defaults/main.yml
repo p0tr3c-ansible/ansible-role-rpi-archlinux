@@ -1,3 +1,5 @@
 zero_out_sd_card: false
 arch_rpi_iso_url: http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-2-latest.tar.gz
 clean_up: true
+preconfigure_os: false
+output_directory: "{{ ansible_env.HOME }}/.ansible"

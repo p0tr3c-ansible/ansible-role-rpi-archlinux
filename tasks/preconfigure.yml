@@ -1,0 +1,66 @@
+- name: Configure static IP
+  template:
+    src: systemd-networkd.wired.j2
+    dest: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/etc/systemd/network/20-wired-{{ item.int_name }}.network"
+    mode: 0644
+  with_items: "{{ static_ip_config }}"
+  become: true
+
+- name: Configure SSH Access
+  template:
+    src: sshd_config.j2
+    dest: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/etc/ssh/sshd_config"
+    mode: 0644
+  become: true
+
+- name: Upload access public key
+  block:
+    - name: Generate new key pair
+      shell: |
+        ssh-keygen -t rsa -b 2048 -f "{{ ansible_env.HOME }}"/.ansible/tmp/arch_mount/pkey.pem -N ""
+        chmod 0400 "{{ ansible_env.HOME }}"/.ansible/tmp/arch_mount/pkey.pem
+      args:
+        creates: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/pkey.pem"
+      when: pub_key_file_path | length <= 0
+    - name: Create output directory
+      file:
+        path: "{{ output_directory }}/{{ role_name }}-output-{{ ansible_date_time.date }}"
+        state: directory
+        mode: 0700
+      when: pub_key_file_path | length <= 0
+    - name: Copy keys for persistence
+      copy:
+        src: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/{{ item }}"
+        dest: "{{ output_directory }}/{{ role_name }}-output-{{ ansible_date_time.date }}/{{ item }}"
+        mode: 0400
+      with_items:
+        - pkey.pem
+        - pkey.pem.pub
+      when: pub_key_file_path | length <= 0
+    - name: Set key file path
+      set_fact:
+        pub_key_file_path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/pkey.pem.pub"
+      when: pub_key_file_path | length <= 0
+    - name: Create ssh directory
+      file:
+        path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/home/alarm/.ssh"
+        state: directory
+        mode: 0600
+        owner: 1000
+        group: 1000
+      become: true
+    - name: Upload authorized_keys
+      copy:
+        src: "{{ pub_key_file_path }}"
+        dest: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/home/alarm/.ssh/authorized_keys"
+        mode: 0600
+        owner: 1000
+        group: 1000
+      become: true
+    - name: Delete temp files
+      file:
+        path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/{{ item }}"
+        state: absent
+      with_items:
+        - pkey.pem
+        - pkey.pem.pub

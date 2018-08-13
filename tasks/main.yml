@@ -66,16 +66,21 @@
   become: true
   when: sd_card_partition is defined and sd_card_partition == true
 
+# Need to use raw shell as the mount module does not support operation without path
 - name: Unmount partition if already existed
-  mount:
-    path: "{{ item.path }}"
-    src: "{{ sd_card_device_path }}{{ item.partition}}"
-    state: absent
-    fstype: "{{ item.fstype }}"
-  with_items:
-    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root", partition: "p2", fstype: ext4 }
-    - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot", partition: "p1", fstype: vfat }
-  when: sd_card_partition is not defined
+  block:
+    - name: Check if device is mounted
+      shell: |
+        df | grep "{{ sd_card_device_path }}{{ item.partition }}" | wc -l
+      register: partition_mounted
+      with_items:
+        - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root", partition: "p2", fstype: ext4 }
+        - { path: "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot", partition: "p1", fstype: vfat }
+    - name: Attempt to unmount paths
+      shell: |
+        umount "{{ sd_card_device_path }}{{ item.item.partition }}"
+      when: "{{ item.stdout }} == 1"
+      with_items: "{{ partition_mounted.results }}"
   become: true
 
 # This will always trigger as we want to write to fresh file system
@@ -115,13 +120,17 @@
   block:
     - name: Copy root partition
       shell: |
-        bsdtar -xpf "{{ arch_iso_file }}" -C "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root"
+        bsdtar -xpf "{{ arch_iso_file }}" -C "{{ ansible_env.HOME }}"/.ansible/tmp/arch_mount/root
         sync
     - name: Copy boot partition
       shell: |
-        mv "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/root/boot/*" "{{ ansible_env.HOME }}/.ansible/tmp/arch_mount/boot/"
+        mv "{{ ansible_env.HOME }}"/.ansible/tmp/arch_mount/root/boot/* "{{ ansible_env.HOME }}"/.ansible/tmp/arch_mount/boot
         sync
   become: true
+
+- name: Preconfigure OS
+  include_tasks: preconfigure.yml
+  when: preconfigure_os == true
 
 - name: Unmount sd card
   mount:
